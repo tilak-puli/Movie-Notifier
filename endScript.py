@@ -1,5 +1,6 @@
 import os
 import time
+from pprint import pprint
 
 exception_string = "Trying to Install required module: "
 try:
@@ -49,7 +50,7 @@ dates = config['parameters']['dates'].split(',')
 movie_name = config['parameters']['movie'].lower()
 theatre_name = config['parameters']['theatre'].lower()
 theatre_class = config['parameters']['theatre_class']
-count = int(config['parameters']['count'])
+count = list(map(int, config['parameters']['count'].split(',')))
 page = requests.get(website)
 soup = BeautifulSoup(page.text, 'html.parser')
 soup = soup.find_all("div", {"class": re.compile("MobileRunningMovie_runningMovie__.*")})
@@ -67,7 +68,10 @@ if res is None:
 # os._exit(1)
 
 while True:
+    print("--------------------------------------------------------")
+    print("   ")
     if res is not None:
+        i = 0
         for date in dates:
             res1 = 'https://paytm.com' + res['href'] + '?fromdate=' + date
             page2 = requests.get(res1)
@@ -87,13 +91,13 @@ while True:
             if found_theatre is None:
                 print('movie is not available in theatre: ' + theatre_name)
 
-                if len(showtime_list) >= count:
-                    print('but movie is available in more than ' + str(count) + ' theatres')
+                if len(showtime_list) >= (count[i] if len(count) > i else 0):
+                    print('but movie is available in more than ' + str(count[i] - 1) + ' theatres')
                     playSound()
 
                 print('Found theatres:')
-                print(list(map(lambda x: x['name'], showtime_list)))
-
+                pprint(list(map(lambda x: x['name'], showtime_list)))
+            i = i+1
     time.sleep(60)
     # Please don't decrease this, we don't want to bring down paytm
 # os._exit(1)
