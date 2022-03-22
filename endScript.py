@@ -1,4 +1,5 @@
 import os
+import time
 
 exception_string = "Trying to Install required module: "
 try:
@@ -13,87 +14,86 @@ except ImportError:
     print(exception_string + "BeautifulSoup\n")
     os.system('python -m pip install beautifulsoup4')
 
+try:
+    from pygame import mixer
+except ImportError:
+    print(exception_string + "pygame\n")
+    os.system('python -m pip install pygame')
+
 import requests
 from bs4 import BeautifulSoup
 import re
-import smtplib
-import ssl
 import configparser
-import sys
 
+def getName(href):
+    return href.split('/')[3].split('-movie')[0].replace('-', ' ')
 
-def sendmail(mail_ids, sender_email_parameter, email_password_parameter, custom_message=None, date_parameter='Date'):
-    port = 465  # For SSL
-    smtp_server = "smtp.gmail.com"
-    sender_email_parameter = sender_email_parameter
-    receiver_email = mail_ids
-    password = email_password_parameter
-    message = """\
-    Subject: WE ARE IN THE ENDGAME NOW
-    
-    
-    Hi User,
-    Hurry up!!! Avengers Endgame IMAX 3D Tickets are now available on """ + date_parameter + """
-            
-    Thanks & Regards,
-    Mr Crawler"""
+def getMovieDetails(soup):
+    a = soup.find('a', href=True)
+    return {'href': a['href'], 'name': getName(a['href']), 'html': a}
 
-    if custom_message:
-        message = custom_message
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(smtp_server, port, context=context) as server:
-        server.login(sender_email_parameter, password)
-        for email in receiver_email:
-            server.sendmail(sender_email_parameter, email, message)
+def getThatreDetails(soup):
+    a = soup.find('a', href=True)
+    return {'href': a['href'], 'name': a.text, 'html': a}
 
+def playSound():
+    mixer.init()
+    sound = mixer.Sound('dingdong.wav')
+    sound.play()
+    time.sleep(5)
+
+config = configparser.ConfigParser()
+config.read('params.ini')
+website = 'https://paytm.com/movies/' + config['parameters']['city']
+dates = config['parameters']['dates'].split(',')
+movie_name = config['parameters']['movie'].lower()
+theatre_name = config['parameters']['theatre'].lower()
+theatre_class = config['parameters']['theatre_class']
+count = int(config['parameters']['count'])
+page = requests.get(website)
+soup = BeautifulSoup(page.text, 'html.parser')
+soup = soup.find_all("div", {"class": re.compile("MobileRunningMovie_runningMovie__.*")})
+movies_list = list(map(getMovieDetails, soup))
+res = None
+
+for movie in movies_list:
+    if movie_name in str(movie['name']).lower():
+        res = movie
+        break
+if res is None:
+    print('Movie not available')
+    print('Found these movies')
+    print(list(map(lambda x: x['name'], movies_list)))
+# os._exit(1)
 
 while True:
-    try:
-        config = configparser.ConfigParser()
-        config.read('params.ini')
-        website = 'https://paytm.com/movies/' + config['parameters']['city']
-        dates = config['parameters']['dates'].split(',')
-        movie_name = config['parameters']['movie'].lower()
-        theatre_name = config['parameters']['theatre'].lower()
-        send_email = config['parameters']['sendmail'].lower()
-        sender_email = config['parameters']['senderEmail']
-        email_password = config['parameters']['emailPassword']
-        mailIds = config['parameters']['mailIds'].split(',')
+    if res is not None:
+        for date in dates:
+            res1 = 'https://paytm.com' + res['href'] + '?fromdate=' + date
+            page2 = requests.get(res1)
+            soup2 = BeautifulSoup(page2.text, 'html.parser')
+            showtime_list = soup2.find_all('div', class_=theatre_class)
+            showtime_list = list(map(getThatreDetails, showtime_list))
 
-        page = requests.get(website)
-        soup = BeautifulSoup(page.text, 'html.parser')
-        soup = soup.find("div", {"id": "popular-movies"})
-
-        movies_list = soup.find_all("li")
-
-        res = None
-        for movie in movies_list:
-            if movie_name in str(movie).lower():
-                res = str(movie)
-                break
-        if res is None:
-            print('Movie not available')
-        # os._exit(1)
-        if res is not None:
-            for date in dates:
-                res1 = 'https://paytm.com' + re.search('href=\"(.*?)\?', res).group(1) + '?fromdate=' + date
-
-                page2 = requests.get(res1)
-                soup2 = BeautifulSoup(page2.text, 'html.parser')
-
-                showtime_list = soup2.find_all('div', class_='SbzU')
-                if theatre_name in str(showtime_list[0]).lower():
-                    if send_email == 'yes':
-                        sendmail(mailIds, sender_email, email_password, date_parameter=str(date))
+            found_theatre = None
+            for theatre in showtime_list:
+                if re.match(theatre_name, theatre['name'], re.IGNORECASE) is not None:
                     print('Success')
-                # os._exit(0)
-                else:
-                    print('Not available')
-            # os._exit(1)
+                    found_theatre = theatre
+                    playSound()
+                    break
+            # os._exit(0)
 
-    except:
-        print('Some exception occured')
-        sendmail(['abc@gmail.com'], custom_message='Exception Occurred')
-        print(sys.exc_info()[0])
-    else:
-        break
+            if found_theatre is None:
+                print('movie is not available in theatre: ' + theatre_name)
+
+                if len(showtime_list) >= count:
+                    print('but movie is available in more than ' + str(count) + ' theatres')
+                    playSound()
+
+                print('Found theatres:')
+                print(list(map(lambda x: x['name'], showtime_list)))
+
+    time.sleep(60)
+    # Please don't decrease this, we don't want to bring down paytm
+# os._exit(1)
